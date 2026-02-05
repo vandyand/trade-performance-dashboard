@@ -2,6 +2,7 @@
 """Plotly chart factories for the trade performance dashboard."""
 
 import plotly.graph_objects as go
+import plotly.express as px
 import pandas as pd
 
 COLORS = {
@@ -123,6 +124,73 @@ def exposure_over_time(df: pd.DataFrame) -> go.Figure:
 
     fig.update_layout(**LAYOUT_DEFAULTS, title="Exposure Over Time",
                       xaxis_title="Date", yaxis_title="Value ($)")
+    return fig
+
+
+def instrument_sharpe_bar(metrics_df: pd.DataFrame,
+                          title: str = "Per-Instrument Sharpe Ratio") -> go.Figure:
+    """Horizontal bar chart of per-instrument Sharpe ratio."""
+    df = metrics_df.sort_values("sharpe")
+    colors = [COLORS["green"] if s >= 0 else COLORS["red"] for s in df["sharpe"]]
+
+    fig = go.Figure()
+    fig.add_trace(go.Bar(
+        y=df["instrument"], x=df["sharpe"],
+        orientation="h", marker_color=colors,
+        hovertemplate="<b>%{y}</b><br>Sharpe: %{x:.2f}<extra></extra>",
+    ))
+    fig.update_layout(**LAYOUT_DEFAULTS, title=title,
+                      xaxis_title="Sharpe Ratio (annualized)", yaxis_title="",
+                      height=max(400, len(df) * 28))
+    return fig
+
+
+def cumulative_instrument_pnl(daily_pnl: pd.DataFrame,
+                              title: str = "Cumulative P&L by Instrument") -> go.Figure:
+    """Interactive line chart of cumulative P&L per instrument.
+
+    Each instrument is a separate trace with its own color.
+    Click legend items to toggle, hover for values.
+    """
+    cum = daily_pnl.cumsum()
+
+    # Sort columns by final cumulative P&L so best performers are listed first
+    col_order = cum.iloc[-1].sort_values(ascending=False).index.tolist()
+
+    # Use a rich color palette that cycles if needed
+    palette = (px.colors.qualitative.Set2 + px.colors.qualitative.Set1
+               + px.colors.qualitative.Pastel1 + px.colors.qualitative.Dark2
+               + px.colors.qualitative.Set3)
+
+    fig = go.Figure()
+    for i, col in enumerate(col_order):
+        color = palette[i % len(palette)]
+        fig.add_trace(go.Scatter(
+            x=cum.index, y=cum[col],
+            mode="lines+markers",
+            name=col,
+            line=dict(color=color, width=2),
+            marker=dict(size=5),
+            hovertemplate=f"<b>{col}</b><br>"
+                          "Date: %{x}<br>"
+                          "Cumulative P&L: $%{y:+.2f}<extra></extra>",
+        ))
+
+    fig.add_hline(y=0, line_dash="dot", line_color=COLORS["gray"], opacity=0.5)
+
+    layout_overrides = {k: v for k, v in LAYOUT_DEFAULTS.items() if k != "legend"}
+    fig.update_layout(
+        **layout_overrides,
+        title=title,
+        xaxis_title="Date",
+        yaxis_title="Cumulative P&L ($)",
+        height=500,
+        legend=dict(
+            orientation="v", yanchor="top", y=1, xanchor="left", x=1.02,
+            font=dict(size=10),
+        ),
+        hovermode="x unified",
+    )
     return fig
 
 

@@ -8,11 +8,13 @@ from pathlib import Path
 from data_loader import (
     load_oanda_nav, load_alpaca_equity, resample_daily,
     extract_oanda_positions, extract_alpaca_positions,
+    load_oanda_instrument_daily_pnl, load_alpaca_instrument_daily_pnl,
 )
-from metrics import compute_all_metrics, compute_daily_returns
+from metrics import compute_all_metrics, compute_daily_returns, compute_instrument_metrics
 from charts import (
     equity_curve, drawdown_chart, daily_returns_bar,
     positions_bar, exposure_over_time, rolling_sharpe,
+    instrument_sharpe_bar, cumulative_instrument_pnl,
 )
 
 # --- Config ---
@@ -39,6 +41,16 @@ def load_alpaca():
     return load_alpaca_equity(ALPACA_FILE)
 
 
+@st.cache_data(ttl=300)
+def load_oanda_inst_pnl():
+    return load_oanda_instrument_daily_pnl(OANDA_FILE)
+
+
+@st.cache_data(ttl=300)
+def load_alpaca_inst_pnl():
+    return load_alpaca_instrument_daily_pnl(ALPACA_FILE)
+
+
 def main():
     st.title("Algorithmic Trading Performance")
     st.caption("Live system metrics | Updated every 5 minutes")
@@ -55,13 +67,14 @@ def main():
         if system == "OANDA Forex":
             raw_df = oanda_raw.copy()
             value_col = "nav"
-            phase2 = st.checkbox("Phase 2 only (Jan 19+)", value=True)
-            if phase2 and not raw_df.empty:
+            # Current algorithm started Jan 19, 2026
+            if not raw_df.empty:
                 raw_df = raw_df[raw_df.index >= PHASE2_START]
+            algo_start_nav = raw_df[value_col].iloc[0] if not raw_df.empty else None
         else:
             raw_df = alpaca_raw.copy()
             value_col = "equity"
-            phase2 = False
+            algo_start_nav = None
 
         if raw_df.empty:
             st.warning("No data available.")
@@ -84,16 +97,23 @@ def main():
             st.markdown(
                 "- 20 forex instruments\n"
                 "- TCN + Actor-Critic RL\n"
-                "- Continuous position sizing\n"
-                "- 5-min decision intervals"
+                "- Daily position sizing\n"
+                "- Daily decision intervals"
             )
+            if algo_start_nav is not None:
+                st.caption(
+                    f"Algorithm began trading Jan 19, 2026 "
+                    f"with account NAV of ${algo_start_nav:.2f}")
         else:
             st.markdown(
                 "- 100 long/short positions\n"
                 "- US equities universe\n"
                 "- Paper trading\n"
-                "- 5-min rebalancing"
+                "- Daily rebalancing"
             )
+            st.caption(
+                "Algorithm began trading Feb 2, 2026 "
+                "with account balance of $100,000.00")
 
     if raw_df.empty:
         st.warning("No data in selected range.")
@@ -133,14 +153,34 @@ def main():
     with tab_positions:
         if system == "OANDA Forex":
             positions = extract_oanda_positions(OANDA_FILE)
+            # Load instrument P&L data early so cumulative chart can go at top
+            inst_pnl = load_oanda_inst_pnl()
+            if not inst_pnl.empty:
+                inst_pnl = inst_pnl[inst_pnl.index >= PHASE2_START.date()]
+                if len(date_range) == 2:
+                    s, e = date_range
+                    inst_pnl = inst_pnl[
+                        (inst_pnl.index >= s) & (inst_pnl.index <= e)
+                    ]
+
             if not positions.empty:
                 st.subheader("Current Positions")
                 col1, col2 = st.columns(2)
                 with col1:
                     st.metric("Open Positions", len(positions))
                 with col2:
-                    total_pl = positions["pl"].sum()
-                    st.metric("Total Realized P&L", f"${total_pl:+.2f}")
+                    current_nav = raw_df[value_col].iloc[-1]
+                    if algo_start_nav is not None:
+                        algo_pnl = current_nav - algo_start_nav
+                        st.metric("Algorithm P&L", f"${algo_pnl:+.2f}")
+
+                # Cumulative P&L chart right after metrics
+                if not inst_pnl.empty and len(inst_pnl) >= 2:
+                    st.plotly_chart(
+                        cumulative_instrument_pnl(
+                            inst_pnl,
+                            "Cumulative P&L by Instrument (OANDA)"),
+                        use_container_width=True)
 
                 st.plotly_chart(
                     positions_bar(positions, "instrument", "pl",
@@ -157,8 +197,51 @@ def main():
             else:
                 st.info("No position data available.")
 
+            # Per-instrument metrics
+            st.divider()
+            st.subheader("Per-Instrument Performance")
+            if not inst_pnl.empty and len(inst_pnl) >= 2:
+                inst_metrics = compute_instrument_metrics(inst_pnl)
+                if not inst_metrics.empty:
+                    st.plotly_chart(
+                        instrument_sharpe_bar(
+                            inst_metrics,
+                            "Per-Instrument Sharpe (OANDA)"),
+                        use_container_width=True)
+                    with st.expander("Per-Instrument Metrics", expanded=True):
+                        st.dataframe(
+                            inst_metrics,
+                            use_container_width=True,
+                            hide_index=True,
+                            column_config={
+                                "instrument": "Instrument",
+                                "total_pnl": st.column_config.NumberColumn(
+                                    "Total P&L", format="$%.2f"),
+                                "avg_daily_pnl": st.column_config.NumberColumn(
+                                    "Avg Daily P&L", format="$%.2f"),
+                                "sharpe": st.column_config.NumberColumn(
+                                    "Sharpe", format="%.2f"),
+                                "sortino": st.column_config.NumberColumn(
+                                    "Sortino", format="%.2f"),
+                                "win_rate": st.column_config.NumberColumn(
+                                    "Win Rate", format="%.1%%"),
+                                "trading_days": "Days",
+                            })
+            else:
+                st.info("Need at least 2 days for per-instrument metrics.")
+
         else:
             positions = extract_alpaca_positions(ALPACA_FILE)
+
+            # Load instrument P&L data early so cumulative chart can go at top
+            inst_pnl = load_alpaca_inst_pnl()
+            if not inst_pnl.empty:
+                if len(date_range) == 2:
+                    s, e = date_range
+                    inst_pnl = inst_pnl[
+                        (inst_pnl.index >= s) & (inst_pnl.index <= e)
+                    ]
+
             if not positions.empty:
                 st.subheader("Current Positions")
                 col1, col2, col3 = st.columns(3)
@@ -168,6 +251,19 @@ def main():
                     st.metric("Long", len(positions[positions["side"] == "long"]))
                 with col3:
                     st.metric("Short", len(positions[positions["side"] == "short"]))
+
+                # Cumulative P&L chart right after metrics
+                if not inst_pnl.empty:
+                    inst_metrics_early = compute_instrument_metrics(inst_pnl)
+                    if not inst_metrics_early.empty:
+                        top_syms = inst_metrics_early.head(10)["instrument"].tolist()
+                        bottom_syms = inst_metrics_early.tail(10)["instrument"].tolist()
+                        highlight = list(dict.fromkeys(top_syms + bottom_syms))
+                        st.plotly_chart(
+                            cumulative_instrument_pnl(
+                                inst_pnl[highlight],
+                                "Cumulative P&L — Top/Bottom 10 (Alpaca)"),
+                            use_container_width=True)
 
                 st.plotly_chart(
                     positions_bar(positions, "symbol", "unrealized_pl",
@@ -180,6 +276,39 @@ def main():
                         use_container_width=True)
             else:
                 st.info("No position data available.")
+
+            # Per-instrument metrics
+            st.divider()
+            st.subheader("Per-Instrument Performance")
+            if not inst_pnl.empty:
+                inst_metrics = compute_instrument_metrics(inst_pnl)
+                if not inst_metrics.empty:
+                    st.plotly_chart(
+                        instrument_sharpe_bar(
+                            inst_metrics,
+                            "Per-Instrument Sharpe (Alpaca)"),
+                        use_container_width=True)
+                    with st.expander("Per-Instrument Metrics", expanded=True):
+                        st.dataframe(
+                            inst_metrics,
+                            use_container_width=True,
+                            hide_index=True,
+                            column_config={
+                                "instrument": "Symbol",
+                                "total_pnl": st.column_config.NumberColumn(
+                                    "Total P&L", format="$%.2f"),
+                                "avg_daily_pnl": st.column_config.NumberColumn(
+                                    "Avg Daily P&L", format="$%.2f"),
+                                "sharpe": st.column_config.NumberColumn(
+                                    "Sharpe", format="%.2f"),
+                                "sortino": st.column_config.NumberColumn(
+                                    "Sortino", format="%.2f"),
+                                "win_rate": st.column_config.NumberColumn(
+                                    "Win Rate", format="%.1%%"),
+                                "trading_days": "Days",
+                            })
+            else:
+                st.info("No per-instrument data available.")
 
     # === RISK ===
     with tab_risk:

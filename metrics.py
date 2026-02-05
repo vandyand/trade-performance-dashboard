@@ -62,6 +62,57 @@ def compute_calmar(df: pd.DataFrame, value_col: str,
     return float(ann_return / dd)
 
 
+def compute_instrument_metrics(daily_pnl: pd.DataFrame) -> pd.DataFrame:
+    """Compute per-instrument metrics from daily P&L DataFrame.
+
+    Input: DataFrame with date index, one column per instrument.
+    Returns: DataFrame with columns: instrument, total_pnl, avg_daily_pnl,
+    sharpe, sortino, win_rate, trading_days.
+    """
+    if daily_pnl.empty:
+        return pd.DataFrame()
+
+    results = []
+    for col in daily_pnl.columns:
+        s = daily_pnl[col].dropna()
+        n = len(s)
+        if n == 0:
+            continue
+
+        total = s.sum()
+        avg = s.mean()
+        std = s.std() if n > 1 else 0.0
+        downside = s[s < 0]
+        down_std = downside.std() if len(downside) > 1 else 0.0
+
+        if n < 2 or std == 0:
+            sharpe = 0.0
+        else:
+            sharpe = avg / std * np.sqrt(252)
+
+        if n < 2 or down_std == 0:
+            sortino = float("inf") if avg > 0 else 0.0
+        else:
+            sortino = avg / down_std * np.sqrt(252)
+
+        win_rate = (s > 0).sum() / n
+
+        results.append({
+            "instrument": col,
+            "total_pnl": round(total, 2),
+            "avg_daily_pnl": round(avg, 2),
+            "sharpe": round(sharpe, 2),
+            "sortino": round(sortino, 2),
+            "win_rate": round(win_rate, 3),
+            "trading_days": n,
+        })
+
+    if not results:
+        return pd.DataFrame()
+
+    return pd.DataFrame(results).sort_values("sharpe", ascending=False).reset_index(drop=True)
+
+
 def compute_all_metrics(df: pd.DataFrame, value_col: str) -> dict:
     """Compute all performance metrics. Returns a dict."""
     returns = compute_daily_returns(df, value_col)
