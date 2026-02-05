@@ -1,10 +1,14 @@
 # Trade Performance Dashboard
 
+**[Live Dashboard](https://dashboard.avd.trading)**
+
 Live performance dashboard for two algorithmic trading systems, built with Streamlit and Plotly.
 
 ## Systems
 
-- **OANDA Forex** — 20 currency pairs, TCN + Actor-Critic RL agent, daily position sizing
+Both systems use a TCN (Temporal Convolutional Network) + Actor-Critic reinforcement learning architecture for daily decision-making.
+
+- **OANDA Forex** — 20 currency pairs, daily position sizing
 - **Alpaca Equities** — 100 long/short US equities, daily rebalancing, paper trading
 
 ## Features
