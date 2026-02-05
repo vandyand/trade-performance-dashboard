@@ -85,3 +85,73 @@ def resample_daily(df: pd.DataFrame, value_col: str) -> pd.DataFrame:
     if df.empty:
         return df
     return df.resample("D").last().dropna(subset=[value_col])
+
+
+def extract_oanda_positions(path: Path | str) -> pd.DataFrame:
+    """Extract positions from the latest OANDA snapshot."""
+    path = Path(path)
+    if not path.exists():
+        return pd.DataFrame()
+
+    last_line = None
+    with open(path) as f:
+        for line in f:
+            line = line.strip()
+            if line:
+                last_line = line
+
+    if not last_line:
+        return pd.DataFrame()
+
+    rec = json.loads(last_line)
+    rows = []
+    for pos in rec.get("positions", []):
+        long_units = int(pos.get("long", {}).get("units", "0"))
+        short_units = int(pos.get("short", {}).get("units", "0"))
+        rows.append({
+            "instrument": pos["instrument"],
+            "net_units": long_units + short_units,
+            "long_units": long_units,
+            "short_units": short_units,
+            "pl": float(pos.get("pl", "0")),
+            "unrealized_pl": float(pos.get("unrealizedPL", "0")),
+        })
+
+    return pd.DataFrame(rows) if rows else pd.DataFrame()
+
+
+def extract_alpaca_positions(path: Path | str) -> pd.DataFrame:
+    """Extract positions from the latest Alpaca snapshot."""
+    path = Path(path)
+    if not path.exists():
+        return pd.DataFrame()
+
+    last_line = None
+    with open(path) as f:
+        for line in f:
+            line = line.strip()
+            if line:
+                last_line = line
+
+    if not last_line:
+        return pd.DataFrame()
+
+    rec = json.loads(last_line)
+    rows = []
+    for pos in rec.get("positions", []):
+        side = pos.get("side", "")
+        qty = float(pos.get("qty", 0))
+        if "SHORT" in side.upper():
+            qty = -qty
+        rows.append({
+            "symbol": pos["symbol"],
+            "qty": qty,
+            "side": "short" if "SHORT" in side.upper() else "long",
+            "market_value": float(pos.get("market_value", 0)),
+            "cost_basis": float(pos.get("cost_basis", 0)),
+            "avg_entry_price": float(pos.get("avg_entry_price", 0)),
+            "unrealized_pl": float(pos.get("unrealized_pl", 0)),
+            "unrealized_plpc": float(pos.get("unrealized_plpc", 0)),
+        })
+
+    return pd.DataFrame(rows) if rows else pd.DataFrame()

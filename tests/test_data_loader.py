@@ -5,6 +5,7 @@ import pandas as pd
 from pathlib import Path
 
 from data_loader import load_oanda_nav, load_alpaca_equity, resample_daily
+from data_loader import extract_oanda_positions, extract_alpaca_positions
 
 
 @pytest.fixture
@@ -166,3 +167,34 @@ class TestResampleDaily:
         # Both records are same day, so should collapse to 1
         assert len(daily) == 1
         assert daily["nav"].iloc[0] == 981.50  # last value of the day
+
+
+class TestExtractOandaPositions:
+    def test_returns_position_dataframe(self, oanda_jsonl):
+        positions = extract_oanda_positions(oanda_jsonl)
+        assert isinstance(positions, pd.DataFrame)
+        assert "instrument" in positions.columns
+        assert "pl" in positions.columns
+        assert "unrealized_pl" in positions.columns
+        assert "net_units" in positions.columns
+
+    def test_extracts_from_latest_snapshot(self, oanda_jsonl):
+        positions = extract_oanda_positions(oanda_jsonl)
+        assert len(positions) == 1
+        assert positions.iloc[0]["instrument"] == "EUR_USD"
+        assert positions.iloc[0]["pl"] == 3.50  # from second (latest) snapshot
+
+
+class TestExtractAlpacaPositions:
+    def test_returns_position_dataframe(self, alpaca_jsonl):
+        positions = extract_alpaca_positions(alpaca_jsonl)
+        assert isinstance(positions, pd.DataFrame)
+        assert "symbol" in positions.columns
+        assert "unrealized_pl" in positions.columns
+        assert "market_value" in positions.columns
+
+    def test_extracts_from_latest_snapshot(self, alpaca_jsonl):
+        positions = extract_alpaca_positions(alpaca_jsonl)
+        assert len(positions) == 1
+        assert positions.iloc[0]["symbol"] == "AAPL"
+        assert positions.iloc[0]["unrealized_pl"] == 150.0
