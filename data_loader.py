@@ -22,19 +22,22 @@ def load_oanda_nav(path: Path | str) -> pd.DataFrame:
             line = line.strip()
             if not line:
                 continue
-            rec = json.loads(line)
-            acct = rec["account"]
-            rows.append({
-                "timestamp": pd.to_datetime(rec["time_iso"]),
-                "nav": float(acct["NAV"]),
-                "balance": float(acct["balance"]),
-                "pl": float(acct["pl"]),
-                "unrealized_pl": float(acct["unrealizedPL"]),
-                "financing": float(acct["financing"]),
-                "open_trade_count": int(acct["openTradeCount"]),
-                "margin_used": float(acct["marginUsed"]),
-                "position_value": float(acct["positionValue"]),
-            })
+            try:
+                rec = json.loads(line)
+                acct = rec["account"]
+                rows.append({
+                    "timestamp": pd.to_datetime(rec["time_iso"]),
+                    "nav": float(acct["NAV"]),
+                    "balance": float(acct["balance"]),
+                    "pl": float(acct["pl"]),
+                    "unrealized_pl": float(acct["unrealizedPL"]),
+                    "financing": float(acct["financing"]),
+                    "open_trade_count": int(acct["openTradeCount"]),
+                    "margin_used": float(acct["marginUsed"]),
+                    "position_value": float(acct["positionValue"]),
+                })
+            except (KeyError, json.JSONDecodeError, ValueError):
+                continue
 
     if not rows:
         return pd.DataFrame()
@@ -60,17 +63,20 @@ def load_alpaca_equity(path: Path | str) -> pd.DataFrame:
             line = line.strip()
             if not line:
                 continue
-            rec = json.loads(line)
-            acct = rec["account"]
-            totals = rec.get("totals", {})
-            rows.append({
-                "timestamp": pd.to_datetime(rec["time_iso"]),
-                "equity": float(acct["equity"]),
-                "cash": float(acct["cash"]),
-                "long_market_value": float(acct["long_market_value"]),
-                "short_market_value": float(acct["short_market_value"]),
-                "positions_count": int(totals.get("positions_count", 0)),
-            })
+            try:
+                rec = json.loads(line)
+                acct = rec["account"]
+                totals = rec.get("totals", {})
+                rows.append({
+                    "timestamp": pd.to_datetime(rec["time_iso"]),
+                    "equity": float(acct["equity"]),
+                    "cash": float(acct["cash"]),
+                    "long_market_value": float(acct["long_market_value"]),
+                    "short_market_value": float(acct["short_market_value"]),
+                    "positions_count": int(totals.get("positions_count", 0)),
+                })
+            except (KeyError, json.JSONDecodeError, ValueError):
+                continue
 
     if not rows:
         return pd.DataFrame()
