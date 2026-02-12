@@ -121,6 +121,20 @@ def exposure_over_time(df: pd.DataFrame) -> go.Figure:
             line=dict(color=COLORS["orange"], width=1),
             fillcolor="rgba(255, 145, 0, 0.3)",
         ))
+    if "positions_value_usd" in df.columns:
+        fig.add_trace(go.Scatter(
+            x=df.index, y=df["positions_value_usd"],
+            fill="tozeroy", name="Token Positions",
+            line=dict(color=COLORS["green"], width=1),
+            fillcolor="rgba(0, 200, 83, 0.3)",
+        ))
+    if "sol_balance_usd" in df.columns:
+        fig.add_trace(go.Scatter(
+            x=df.index, y=df["sol_balance_usd"],
+            fill="tozeroy", name="SOL Balance",
+            line=dict(color=COLORS["primary"], width=1),
+            fillcolor="rgba(74, 144, 217, 0.3)",
+        ))
 
     fig.update_layout(**LAYOUT_DEFAULTS, title="Exposure Over Time",
                       xaxis_title="Date", yaxis_title="Value ($)")

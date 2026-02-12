@@ -9,6 +9,8 @@ from data_loader import (
     load_oanda_nav, load_alpaca_equity, resample_daily,
     extract_oanda_positions, extract_alpaca_positions,
     load_oanda_instrument_daily_pnl, load_alpaca_instrument_daily_pnl,
+    load_oanda_instrument_pnl, load_alpaca_instrument_pnl,
+    load_solana_nav, extract_solana_positions, load_solana_instrument_pnl,
 )
 from metrics import compute_all_metrics, compute_daily_returns, compute_instrument_metrics
 from charts import (
@@ -21,6 +23,9 @@ from charts import (
 DATA_DIR = Path("/home/kingjames/rl-trader/forex-rl/logs")
 OANDA_FILE = DATA_DIR / "oanda_nav_positions.jsonl"
 ALPACA_FILE = DATA_DIR / "alpaca_equity_positions.jsonl"
+SOLANA_FILE = Path(
+    "/home/kingjames/rl-trader/altmemecoins/logs/solana_account_positions.jsonl"
+)
 
 PHASE2_START = pd.Timestamp("2026-01-19", tz="UTC")
 
@@ -42,6 +47,11 @@ def load_alpaca():
 
 
 @st.cache_data(ttl=300)
+def load_solana():
+    return load_solana_nav(SOLANA_FILE)
+
+
+@st.cache_data(ttl=300)
 def load_oanda_inst_pnl():
     return load_oanda_instrument_daily_pnl(OANDA_FILE)
 
@@ -51,35 +61,80 @@ def load_alpaca_inst_pnl():
     return load_alpaca_instrument_daily_pnl(ALPACA_FILE)
 
 
+@st.cache_data(ttl=300)
+def load_oanda_inst_pnl_5min():
+    return load_oanda_instrument_pnl(OANDA_FILE, freq=None)
+
+
+@st.cache_data(ttl=300)
+def load_alpaca_inst_pnl_5min():
+    return load_alpaca_instrument_pnl(ALPACA_FILE, freq=None)
+
+
+@st.cache_data(ttl=300)
+def load_solana_inst_pnl_daily():
+    return load_solana_instrument_pnl(SOLANA_FILE, freq="D")
+
+
+@st.cache_data(ttl=300)
+def load_solana_inst_pnl_5min():
+    return load_solana_instrument_pnl(SOLANA_FILE, freq=None)
+
+
+@st.cache_data(ttl=300)
+def get_oanda_positions():
+    return extract_oanda_positions(OANDA_FILE)
+
+
+@st.cache_data(ttl=300)
+def get_alpaca_positions():
+    return extract_alpaca_positions(ALPACA_FILE)
+
+
+@st.cache_data(ttl=300)
+def get_solana_positions():
+    return extract_solana_positions(SOLANA_FILE)
+
+
 def main():
     st.title("Algorithmic Trading Performance")
     st.caption("Live system metrics | Updated every 5 minutes")
 
-    oanda_raw = load_oanda()
-    alpaca_raw = load_alpaca()
-
-    # --- Sidebar ---
+    # --- Sidebar (selection before data loading) ---
     with st.sidebar:
         st.header("Filters")
 
-        system = st.radio("Trading System", ["OANDA Forex", "Alpaca Equities"])
+        system = st.radio(
+            "Trading System",
+            ["OANDA Forex", "Alpaca Equities", "Solana Altmemecoins"],
+        )
 
-        if system == "OANDA Forex":
-            raw_df = oanda_raw.copy()
-            value_col = "nav"
-            # Current algorithm started Jan 19, 2026
-            if not raw_df.empty:
-                raw_df = raw_df[raw_df.index >= PHASE2_START]
-            algo_start_nav = raw_df[value_col].iloc[0] if not raw_df.empty else None
-        else:
-            raw_df = alpaca_raw.copy()
-            value_col = "equity"
-            algo_start_nav = None
+        timeframe = st.radio("Timeframe", ["Daily", "5-Minute"])
 
-        if raw_df.empty:
-            st.warning("No data available.")
-            return
+    # --- Load only the selected system's data ---
+    if system == "OANDA Forex":
+        raw_df = load_oanda()
+        value_col = "nav"
+        if not raw_df.empty:
+            raw_df = raw_df[raw_df.index >= PHASE2_START]
+        algo_start_nav = raw_df[value_col].iloc[0] if not raw_df.empty else None
+    elif system == "Alpaca Equities":
+        raw_df = load_alpaca()
+        value_col = "equity"
+        algo_start_nav = None
+    else:  # Solana Altmemecoins
+        raw_df = load_solana()
+        value_col = "nav"
+        algo_start_nav = (
+            raw_df[value_col].iloc[0] if not raw_df.empty else None
+        )
 
+    if raw_df.empty:
+        st.warning("No data available.")
+        return
+
+    # --- Sidebar continued: date range and system details ---
+    with st.sidebar:
         min_date = raw_df.index.min().date()
         max_date = raw_df.index.max().date()
         date_range = st.date_input("Date Range",
@@ -104,7 +159,7 @@ def main():
                 st.caption(
                     f"Algorithm began trading Jan 19, 2026 "
                     f"with account NAV of ${algo_start_nav:.2f}")
-        else:
+        elif system == "Alpaca Equities":
             st.markdown(
                 "- 100 long/short positions\n"
                 "- US equities universe\n"
@@ -114,19 +169,43 @@ def main():
             st.caption(
                 "Algorithm began trading Feb 2, 2026 "
                 "with account balance of $100,000.00")
+        else:  # Solana
+            st.markdown(
+                "- Solana memecoins (long-only)\n"
+                "- TD3 reinforcement learning\n"
+                "- 5-minute decision intervals\n"
+                "- Jupiter DEX execution"
+            )
+            if algo_start_nav is not None:
+                st.caption(f"Starting NAV: ${algo_start_nav:.2f}")
 
     if raw_df.empty:
         st.warning("No data in selected range.")
         return
 
-    daily = resample_daily(raw_df, value_col)
+    # --- Data Processing ---
+    is_solana = system == "Solana Altmemecoins"
+    is_5min = timeframe == "5-Minute"
 
-    if len(daily) < 2:
-        st.warning("Need at least 2 days of data for metrics.")
+    if is_5min:
+        display_df = raw_df
+        if is_solana:
+            annual_factor = 365 * 288  # 288 five-min bars/day, 365 days/year
+        else:
+            annual_factor = 252 * 78  # 78 five-min bars per 6.5h trading day
+    elif is_solana:
+        display_df = resample_daily(raw_df, value_col)
+        annual_factor = 365  # Crypto trades every day
+    else:
+        display_df = resample_daily(raw_df, value_col)
+        annual_factor = 252
+
+    if len(display_df) < 2:
+        st.warning("Need at least 2 data points for metrics.")
         return
 
-    metrics = compute_all_metrics(daily, value_col)
-    returns = compute_daily_returns(daily, value_col)
+    metrics = compute_all_metrics(display_df, value_col, annual_factor)
+    returns = compute_daily_returns(display_df, value_col)
 
     # --- Tabs ---
     tab_overview, tab_positions, tab_risk = st.tabs(
@@ -141,10 +220,18 @@ def main():
         c3.metric("Sortino Ratio", f"{metrics['sortino']:.2f}")
         c4.metric("Max Drawdown", f"{metrics['max_drawdown']:.2%}")
         c5.metric("Win Rate", f"{metrics['win_rate']:.1%}")
-        c6.metric("Trading Days", f"{metrics['trading_days']}")
+        period_label = "Periods" if is_5min else "Trading Days"
+        c6.metric(period_label, f"{metrics['trading_days']}")
 
-        label = "OANDA NAV" if system == "OANDA Forex" else "Alpaca Equity"
-        st.plotly_chart(equity_curve(daily, value_col, title=f"{label} Curve"),
+        if system == "OANDA Forex":
+            curve_label = f"OANDA NAV ({timeframe})"
+        elif system == "Alpaca Equities":
+            curve_label = f"Alpaca Equity ({timeframe})"
+        else:
+            curve_label = f"Solana NAV ({timeframe})"
+
+        st.plotly_chart(equity_curve(display_df, value_col,
+                                     title=f"{curve_label} Curve"),
                         use_container_width=True)
 
         st.plotly_chart(daily_returns_bar(returns), use_container_width=True)
@@ -152,16 +239,31 @@ def main():
     # === POSITIONS ===
     with tab_positions:
         if system == "OANDA Forex":
-            positions = extract_oanda_positions(OANDA_FILE)
-            # Load instrument P&L data early so cumulative chart can go at top
-            inst_pnl = load_oanda_inst_pnl()
+            positions = get_oanda_positions()
+            # Load instrument P&L data at appropriate granularity
+            if is_5min:
+                inst_pnl = load_oanda_inst_pnl_5min()
+                inst_annual = 252 * 78
+            else:
+                inst_pnl = load_oanda_inst_pnl()
+                inst_annual = 252
             if not inst_pnl.empty:
-                inst_pnl = inst_pnl[inst_pnl.index >= PHASE2_START.date()]
+                if timeframe == "Daily":
+                    inst_pnl = inst_pnl[inst_pnl.index >= PHASE2_START.date()]
+                else:
+                    inst_pnl = inst_pnl[
+                        inst_pnl.index >= PHASE2_START]
                 if len(date_range) == 2:
                     s, e = date_range
-                    inst_pnl = inst_pnl[
-                        (inst_pnl.index >= s) & (inst_pnl.index <= e)
-                    ]
+                    if timeframe == "Daily":
+                        inst_pnl = inst_pnl[
+                            (inst_pnl.index >= s) & (inst_pnl.index <= e)
+                        ]
+                    else:
+                        inst_pnl = inst_pnl[
+                            (inst_pnl.index.date >= s)
+                            & (inst_pnl.index.date <= e)
+                        ]
 
             if not positions.empty:
                 st.subheader("Current Positions")
@@ -179,7 +281,7 @@ def main():
                     st.plotly_chart(
                         cumulative_instrument_pnl(
                             inst_pnl,
-                            "Cumulative P&L by Instrument (OANDA)"),
+                            f"Cumulative P&L by Instrument ({timeframe})"),
                         use_container_width=True)
 
                 st.plotly_chart(
@@ -201,13 +303,17 @@ def main():
             st.divider()
             st.subheader("Per-Instrument Performance")
             if not inst_pnl.empty and len(inst_pnl) >= 2:
-                inst_metrics = compute_instrument_metrics(inst_pnl)
+                inst_metrics = compute_instrument_metrics(
+                    inst_pnl, inst_annual)
                 if not inst_metrics.empty:
                     st.plotly_chart(
                         instrument_sharpe_bar(
                             inst_metrics,
-                            "Per-Instrument Sharpe (OANDA)"),
+                            f"Per-Instrument Sharpe ({timeframe})"),
                         use_container_width=True)
+                    pnl_label = (
+                        "Avg 5-Min P&L" if is_5min else "Avg Daily P&L"
+                    )
                     with st.expander("Per-Instrument Metrics", expanded=True):
                         st.dataframe(
                             inst_metrics,
@@ -218,29 +324,40 @@ def main():
                                 "total_pnl": st.column_config.NumberColumn(
                                     "Total P&L", format="$%.2f"),
                                 "avg_daily_pnl": st.column_config.NumberColumn(
-                                    "Avg Daily P&L", format="$%.2f"),
+                                    pnl_label, format="$%.2f"),
                                 "sharpe": st.column_config.NumberColumn(
                                     "Sharpe", format="%.2f"),
                                 "sortino": st.column_config.NumberColumn(
                                     "Sortino", format="%.2f"),
                                 "win_rate": st.column_config.NumberColumn(
                                     "Win Rate", format="%.1%%"),
-                                "trading_days": "Days",
+                                "trading_days": "Periods" if is_5min else "Days",
                             })
             else:
-                st.info("Need at least 2 days for per-instrument metrics.")
+                st.info("Need at least 2 periods for per-instrument metrics.")
 
-        else:
-            positions = extract_alpaca_positions(ALPACA_FILE)
+        elif system == "Alpaca Equities":
+            positions = get_alpaca_positions()
 
-            # Load instrument P&L data early so cumulative chart can go at top
-            inst_pnl = load_alpaca_inst_pnl()
+            # Load instrument P&L data at appropriate granularity
+            if is_5min:
+                inst_pnl = load_alpaca_inst_pnl_5min()
+                inst_annual = 252 * 78
+            else:
+                inst_pnl = load_alpaca_inst_pnl()
+                inst_annual = 252
             if not inst_pnl.empty:
                 if len(date_range) == 2:
                     s, e = date_range
-                    inst_pnl = inst_pnl[
-                        (inst_pnl.index >= s) & (inst_pnl.index <= e)
-                    ]
+                    if timeframe == "Daily":
+                        inst_pnl = inst_pnl[
+                            (inst_pnl.index >= s) & (inst_pnl.index <= e)
+                        ]
+                    else:
+                        inst_pnl = inst_pnl[
+                            (inst_pnl.index.date >= s)
+                            & (inst_pnl.index.date <= e)
+                        ]
 
             if not positions.empty:
                 st.subheader("Current Positions")
@@ -254,16 +371,19 @@ def main():
 
                 # Cumulative P&L chart right after metrics
                 if not inst_pnl.empty:
-                    inst_metrics_early = compute_instrument_metrics(inst_pnl)
+                    inst_metrics_early = compute_instrument_metrics(
+                        inst_pnl, inst_annual)
                     if not inst_metrics_early.empty:
                         top_syms = inst_metrics_early.head(10)["instrument"].tolist()
                         bottom_syms = inst_metrics_early.tail(10)["instrument"].tolist()
                         highlight = list(dict.fromkeys(top_syms + bottom_syms))
-                        st.plotly_chart(
-                            cumulative_instrument_pnl(
-                                inst_pnl[highlight],
-                                "Cumulative P&L — Top/Bottom 10 (Alpaca)"),
-                            use_container_width=True)
+                        available = [c for c in highlight if c in inst_pnl.columns]
+                        if available:
+                            st.plotly_chart(
+                                cumulative_instrument_pnl(
+                                    inst_pnl[available],
+                                    f"Cumulative P&L — Top/Bottom 10 ({timeframe})"),
+                                use_container_width=True)
 
                 st.plotly_chart(
                     positions_bar(positions, "symbol", "unrealized_pl",
@@ -281,12 +401,16 @@ def main():
             st.divider()
             st.subheader("Per-Instrument Performance")
             if not inst_pnl.empty:
-                inst_metrics = compute_instrument_metrics(inst_pnl)
+                inst_metrics = compute_instrument_metrics(
+                    inst_pnl, inst_annual)
                 if not inst_metrics.empty:
+                    pnl_label = (
+                        "Avg 5-Min P&L" if is_5min else "Avg Daily P&L"
+                    )
                     st.plotly_chart(
                         instrument_sharpe_bar(
                             inst_metrics,
-                            "Per-Instrument Sharpe (Alpaca)"),
+                            f"Per-Instrument Sharpe ({timeframe})"),
                         use_container_width=True)
                     with st.expander("Per-Instrument Metrics", expanded=True):
                         st.dataframe(
@@ -298,26 +422,135 @@ def main():
                                 "total_pnl": st.column_config.NumberColumn(
                                     "Total P&L", format="$%.2f"),
                                 "avg_daily_pnl": st.column_config.NumberColumn(
-                                    "Avg Daily P&L", format="$%.2f"),
+                                    pnl_label, format="$%.2f"),
                                 "sharpe": st.column_config.NumberColumn(
                                     "Sharpe", format="%.2f"),
                                 "sortino": st.column_config.NumberColumn(
                                     "Sortino", format="%.2f"),
                                 "win_rate": st.column_config.NumberColumn(
                                     "Win Rate", format="%.1%%"),
-                                "trading_days": "Days",
+                                "trading_days": "Periods" if is_5min else "Days",
                             })
             else:
                 st.info("No per-instrument data available.")
 
-    # === RISK ===
-    with tab_risk:
-        st.plotly_chart(drawdown_chart(daily, value_col),
+        else:  # Solana Altmemecoins
+            positions = get_solana_positions()
+            if is_5min:
+                inst_pnl = load_solana_inst_pnl_5min()
+                inst_annual = 365 * 288
+            else:
+                inst_pnl = load_solana_inst_pnl_daily()
+                inst_annual = 365
+
+            if not inst_pnl.empty and len(date_range) == 2:
+                s, e = date_range
+                if timeframe == "Daily":
+                    inst_pnl = inst_pnl[
+                        (inst_pnl.index >= s) & (inst_pnl.index <= e)
+                    ]
+                else:
+                    inst_pnl = inst_pnl[
+                        (inst_pnl.index.date >= s)
+                        & (inst_pnl.index.date <= e)
+                    ]
+
+            if not positions.empty:
+                st.subheader("Current Positions")
+                col1, col2, col3 = st.columns(3)
+                with col1:
+                    st.metric("Open Positions", len(positions))
+                with col2:
+                    total_value = positions["value_usd"].sum()
+                    st.metric("Positions Value", f"${total_value:.2f}")
+                with col3:
+                    total_pnl = positions["unrealized_pnl"].sum()
+                    st.metric("Unrealized P&L", f"${total_pnl:+.4f}")
+
+                # Cumulative P&L chart
+                if not inst_pnl.empty and len(inst_pnl) >= 2:
+                    st.plotly_chart(
+                        cumulative_instrument_pnl(
+                            inst_pnl,
+                            f"Cumulative P&L by Token ({timeframe})"),
                         use_container_width=True)
 
-        if len(returns) >= 10:
+                st.plotly_chart(
+                    positions_bar(positions, "symbol", "unrealized_pnl",
+                                  title="Unrealized P&L by Token"),
+                    use_container_width=True)
+
+                with st.expander("Raw Position Data"):
+                    st.dataframe(
+                        positions.sort_values("value_usd", ascending=False),
+                        use_container_width=True,
+                        column_config={
+                            "symbol": "Token",
+                            "value_usd": st.column_config.NumberColumn(
+                                "Value", format="$%.4f"),
+                            "entry_usd": st.column_config.NumberColumn(
+                                "Entry", format="$%.4f"),
+                            "unrealized_pnl": st.column_config.NumberColumn(
+                                "P&L", format="$%.4f"),
+                            "pnl_pct": st.column_config.NumberColumn(
+                                "P&L %", format="%.2%%"),
+                            "price_impact_pct": st.column_config.NumberColumn(
+                                "Impact %", format="%.4%%"),
+                        })
+            else:
+                st.info("No position data available.")
+
+            # Per-token metrics
+            st.divider()
+            st.subheader("Per-Token Performance")
+            if not inst_pnl.empty and len(inst_pnl) >= 2:
+                inst_metrics = compute_instrument_metrics(
+                    inst_pnl, inst_annual)
+                if not inst_metrics.empty:
+                    st.plotly_chart(
+                        instrument_sharpe_bar(
+                            inst_metrics,
+                            f"Per-Token Sharpe ({timeframe})"),
+                        use_container_width=True)
+                    pnl_label = (
+                        "Avg 5-Min P&L" if is_5min else "Avg Daily P&L"
+                    )
+                    with st.expander("Per-Token Metrics", expanded=True):
+                        st.dataframe(
+                            inst_metrics,
+                            use_container_width=True,
+                            hide_index=True,
+                            column_config={
+                                "instrument": "Token",
+                                "total_pnl": st.column_config.NumberColumn(
+                                    "Total P&L", format="$%.4f"),
+                                "avg_daily_pnl": st.column_config.NumberColumn(
+                                    pnl_label, format="$%.6f"),
+                                "sharpe": st.column_config.NumberColumn(
+                                    "Sharpe", format="%.2f"),
+                                "sortino": st.column_config.NumberColumn(
+                                    "Sortino", format="%.2f"),
+                                "win_rate": st.column_config.NumberColumn(
+                                    "Win Rate", format="%.1%%"),
+                                "trading_days": "Periods",
+                            })
+            else:
+                st.info(
+                    "Need at least 2 periods for per-token metrics.")
+
+    # === RISK ===
+    with tab_risk:
+        st.plotly_chart(drawdown_chart(display_df, value_col),
+                        use_container_width=True)
+
+        if is_5min:
+            rolling_window = min(288, len(returns) - 1)  # 1 day of 5-min bars
+        else:
+            rolling_window = min(10, len(returns) - 1)
+
+        if rolling_window >= 3 and len(returns) >= rolling_window:
             st.plotly_chart(
-                rolling_sharpe(returns, window=min(10, len(returns) - 1)),
+                rolling_sharpe(returns, window=rolling_window),
                 use_container_width=True)
 
         st.plotly_chart(exposure_over_time(raw_df), use_container_width=True)
@@ -326,9 +559,11 @@ def main():
         rc1, rc2, rc3, rc4 = st.columns(4)
         rc1.metric("Calmar Ratio", f"{metrics['calmar']:.2f}")
         rc2.metric("Annualized Return", f"{metrics['annualized_return']:.2%}")
-        rc3.metric("Avg Daily Return",
+        ret_label = "Avg 5-Min Return" if is_5min else "Avg Daily Return"
+        vol_label = "5-Min Volatility" if is_5min else "Daily Volatility"
+        rc3.metric(ret_label,
                     f"{returns.mean():.4%}" if len(returns) > 0 else "N/A")
-        rc4.metric("Daily Volatility",
+        rc4.metric(vol_label,
                     f"{returns.std():.4%}" if len(returns) > 0 else "N/A")
 
 

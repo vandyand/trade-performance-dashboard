@@ -5,3 +5,4 @@ venv/
 .streamlit/secrets.toml
 .env
 secrets/
+cache/

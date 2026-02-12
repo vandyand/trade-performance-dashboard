@@ -62,10 +62,11 @@ def compute_calmar(df: pd.DataFrame, value_col: str,
     return float(ann_return / dd)
 
 
-def compute_instrument_metrics(daily_pnl: pd.DataFrame) -> pd.DataFrame:
-    """Compute per-instrument metrics from daily P&L DataFrame.
+def compute_instrument_metrics(daily_pnl: pd.DataFrame,
+                               annual_factor: float = 252) -> pd.DataFrame:
+    """Compute per-instrument metrics from period P&L DataFrame.
 
-    Input: DataFrame with date index, one column per instrument.
+    Input: DataFrame with date/datetime index, one column per instrument.
     Returns: DataFrame with columns: instrument, total_pnl, avg_daily_pnl,
     sharpe, sortino, win_rate, trading_days.
     """
@@ -88,12 +89,12 @@ def compute_instrument_metrics(daily_pnl: pd.DataFrame) -> pd.DataFrame:
         if n < 2 or std == 0:
             sharpe = 0.0
         else:
-            sharpe = avg / std * np.sqrt(252)
+            sharpe = avg / std * np.sqrt(annual_factor)
 
         if n < 2 or down_std == 0:
             sortino = float("inf") if avg > 0 else 0.0
         else:
-            sortino = avg / down_std * np.sqrt(252)
+            sortino = avg / down_std * np.sqrt(annual_factor)
 
         win_rate = (s > 0).sum() / n
 
@@ -113,19 +114,20 @@ def compute_instrument_metrics(daily_pnl: pd.DataFrame) -> pd.DataFrame:
     return pd.DataFrame(results).sort_values("sharpe", ascending=False).reset_index(drop=True)
 
 
-def compute_all_metrics(df: pd.DataFrame, value_col: str) -> dict:
+def compute_all_metrics(df: pd.DataFrame, value_col: str,
+                        annual_factor: float = 252) -> dict:
     """Compute all performance metrics. Returns a dict."""
     returns = compute_daily_returns(df, value_col)
     trading_days = len(returns)
-    ann_return = returns.mean() * 252 if trading_days > 0 else 0.0
+    ann_return = returns.mean() * annual_factor if trading_days > 0 else 0.0
 
     return {
         "total_return": compute_total_return(df, value_col),
         "annualized_return": float(ann_return),
-        "sharpe": compute_sharpe(returns),
-        "sortino": compute_sortino(returns),
+        "sharpe": compute_sharpe(returns, annual_factor),
+        "sortino": compute_sortino(returns, annual_factor),
         "max_drawdown": compute_max_drawdown(df, value_col),
         "win_rate": compute_win_rate(returns),
-        "calmar": compute_calmar(df, value_col, returns),
+        "calmar": compute_calmar(df, value_col, returns, annual_factor),
         "trading_days": trading_days,
     }

@@ -1,0 +1,10 @@
+[Unit]
+Description=Refresh trade dashboard Parquet cache
+After=network.target
+
+[Service]
+Type=oneshot
+User=kingjames
+WorkingDirectory=/home/kingjames/trade-performance-dashboard
+ExecStart=/home/kingjames/trade-performance-dashboard/venv/bin/python update_cache.py
+Environment=PYTHONPATH=/home/kingjames/trade-performance-dashboard
