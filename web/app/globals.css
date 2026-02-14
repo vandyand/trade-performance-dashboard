@@ -1,0 +1,21 @@
+@import "tailwindcss";
+
+@theme inline {
+  --color-bg: #0E1117;
+  --color-card: #1E2130;
+  --color-primary: #4A90D9;
+  --color-accent-green: #00C853;
+  --color-accent-red: #FF1744;
+  --color-accent-orange: #FF9100;
+  --color-accent-purple: #AA00FF;
+}
+
+:root {
+  --bg: #0E1117;
+  --card: #1E2130;
+}
+
+body {
+  background-color: var(--bg);
+  color: #FAFAFA;
+}

@@ -36,62 +36,62 @@ st.set_page_config(
 )
 
 
-@st.cache_data(ttl=300)
+@st.cache_data(ttl=3600)
 def load_oanda():
     return load_oanda_nav(OANDA_FILE)
 
 
-@st.cache_data(ttl=300)
+@st.cache_data(ttl=3600)
 def load_alpaca():
     return load_alpaca_equity(ALPACA_FILE)
 
 
-@st.cache_data(ttl=300)
+@st.cache_data(ttl=3600)
 def load_solana():
     return load_solana_nav(SOLANA_FILE)
 
 
-@st.cache_data(ttl=300)
+@st.cache_data(ttl=3600)
 def load_oanda_inst_pnl():
     return load_oanda_instrument_daily_pnl(OANDA_FILE)
 
 
-@st.cache_data(ttl=300)
+@st.cache_data(ttl=3600)
 def load_alpaca_inst_pnl():
     return load_alpaca_instrument_daily_pnl(ALPACA_FILE)
 
 
-@st.cache_data(ttl=300)
+@st.cache_data(ttl=3600)
 def load_oanda_inst_pnl_5min():
     return load_oanda_instrument_pnl(OANDA_FILE, freq=None)
 
 
-@st.cache_data(ttl=300)
+@st.cache_data(ttl=3600)
 def load_alpaca_inst_pnl_5min():
     return load_alpaca_instrument_pnl(ALPACA_FILE, freq=None)
 
 
-@st.cache_data(ttl=300)
+@st.cache_data(ttl=3600)
 def load_solana_inst_pnl_daily():
     return load_solana_instrument_pnl(SOLANA_FILE, freq="D")
 
 
-@st.cache_data(ttl=300)
+@st.cache_data(ttl=3600)
 def load_solana_inst_pnl_5min():
     return load_solana_instrument_pnl(SOLANA_FILE, freq=None)
 
 
-@st.cache_data(ttl=300)
+@st.cache_data(ttl=3600)
 def get_oanda_positions():
     return extract_oanda_positions(OANDA_FILE)
 
 
-@st.cache_data(ttl=300)
+@st.cache_data(ttl=3600)
 def get_alpaca_positions():
     return extract_alpaca_positions(ALPACA_FILE)
 
 
-@st.cache_data(ttl=300)
+@st.cache_data(ttl=3600)
 def get_solana_positions():
     return extract_solana_positions(SOLANA_FILE)
 
@@ -139,7 +139,8 @@ def main():
         max_date = raw_df.index.max().date()
         date_range = st.date_input("Date Range",
                                    value=(min_date, max_date),
-                                   min_value=min_date, max_value=max_date)
+                                   min_value=min_date, max_value=max_date,
+                                   key="date_range")
         if len(date_range) == 2:
             start, end = date_range
             raw_df = raw_df[
@@ -359,6 +360,12 @@ def main():
                             & (inst_pnl.index.date <= e)
                         ]
 
+            # Compute instrument metrics once for reuse
+            inst_metrics = (
+                compute_instrument_metrics(inst_pnl, inst_annual)
+                if not inst_pnl.empty else pd.DataFrame()
+            )
+
             if not positions.empty:
                 st.subheader("Current Positions")
                 col1, col2, col3 = st.columns(3)
@@ -370,20 +377,17 @@ def main():
                     st.metric("Short", len(positions[positions["side"] == "short"]))
 
                 # Cumulative P&L chart right after metrics
-                if not inst_pnl.empty:
-                    inst_metrics_early = compute_instrument_metrics(
-                        inst_pnl, inst_annual)
-                    if not inst_metrics_early.empty:
-                        top_syms = inst_metrics_early.head(10)["instrument"].tolist()
-                        bottom_syms = inst_metrics_early.tail(10)["instrument"].tolist()
-                        highlight = list(dict.fromkeys(top_syms + bottom_syms))
-                        available = [c for c in highlight if c in inst_pnl.columns]
-                        if available:
-                            st.plotly_chart(
-                                cumulative_instrument_pnl(
-                                    inst_pnl[available],
-                                    f"Cumulative P&L — Top/Bottom 10 ({timeframe})"),
-                                use_container_width=True)
+                if not inst_metrics.empty:
+                    top_syms = inst_metrics.head(10)["instrument"].tolist()
+                    bottom_syms = inst_metrics.tail(10)["instrument"].tolist()
+                    highlight = list(dict.fromkeys(top_syms + bottom_syms))
+                    available = [c for c in highlight if c in inst_pnl.columns]
+                    if available:
+                        st.plotly_chart(
+                            cumulative_instrument_pnl(
+                                inst_pnl[available],
+                                f"Cumulative P&L — Top/Bottom 10 ({timeframe})"),
+                            use_container_width=True)
 
                 st.plotly_chart(
                     positions_bar(positions, "symbol", "unrealized_pl",
@@ -400,37 +404,34 @@ def main():
             # Per-instrument metrics
             st.divider()
             st.subheader("Per-Instrument Performance")
-            if not inst_pnl.empty:
-                inst_metrics = compute_instrument_metrics(
-                    inst_pnl, inst_annual)
-                if not inst_metrics.empty:
-                    pnl_label = (
-                        "Avg 5-Min P&L" if is_5min else "Avg Daily P&L"
-                    )
-                    st.plotly_chart(
-                        instrument_sharpe_bar(
-                            inst_metrics,
-                            f"Per-Instrument Sharpe ({timeframe})"),
-                        use_container_width=True)
-                    with st.expander("Per-Instrument Metrics", expanded=True):
-                        st.dataframe(
-                            inst_metrics,
-                            use_container_width=True,
-                            hide_index=True,
-                            column_config={
-                                "instrument": "Symbol",
-                                "total_pnl": st.column_config.NumberColumn(
-                                    "Total P&L", format="$%.2f"),
-                                "avg_daily_pnl": st.column_config.NumberColumn(
-                                    pnl_label, format="$%.2f"),
-                                "sharpe": st.column_config.NumberColumn(
-                                    "Sharpe", format="%.2f"),
-                                "sortino": st.column_config.NumberColumn(
-                                    "Sortino", format="%.2f"),
-                                "win_rate": st.column_config.NumberColumn(
-                                    "Win Rate", format="%.1%%"),
-                                "trading_days": "Periods" if is_5min else "Days",
-                            })
+            if not inst_metrics.empty:
+                pnl_label = (
+                    "Avg 5-Min P&L" if is_5min else "Avg Daily P&L"
+                )
+                st.plotly_chart(
+                    instrument_sharpe_bar(
+                        inst_metrics,
+                        f"Per-Instrument Sharpe ({timeframe})"),
+                    use_container_width=True)
+                with st.expander("Per-Instrument Metrics", expanded=True):
+                    st.dataframe(
+                        inst_metrics,
+                        use_container_width=True,
+                        hide_index=True,
+                        column_config={
+                            "instrument": "Symbol",
+                            "total_pnl": st.column_config.NumberColumn(
+                                "Total P&L", format="$%.2f"),
+                            "avg_daily_pnl": st.column_config.NumberColumn(
+                                pnl_label, format="$%.2f"),
+                            "sharpe": st.column_config.NumberColumn(
+                                "Sharpe", format="%.2f"),
+                            "sortino": st.column_config.NumberColumn(
+                                "Sortino", format="%.2f"),
+                            "win_rate": st.column_config.NumberColumn(
+                                "Win Rate", format="%.1%%"),
+                            "trading_days": "Periods" if is_5min else "Days",
+                        })
             else:
                 st.info("No per-instrument data available.")
 

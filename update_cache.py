@@ -35,6 +35,15 @@ def main():
         logging.exception("Cache refresh failed")
         sys.exit(1)
 
+    # After cache refresh, push to Vercel Blob
+    try:
+        from push_to_vercel import push_system
+        for system in ["oanda", "alpaca", "solana"]:
+            push_system(system)
+        logging.info("Vercel push completed successfully")
+    except Exception as e:
+        logging.warning("Vercel push failed (non-fatal): %s", e)
+
 
 if __name__ == "__main__":
     main()
