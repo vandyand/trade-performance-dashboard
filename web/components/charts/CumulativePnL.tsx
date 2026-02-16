@@ -2,6 +2,7 @@
 
 import { LineSeries } from "lightweight-charts";
 import ChartContainer from "./ChartContainer";
+import { toChartTime } from "@/lib/chartTime";
 
 const PALETTE = [
   "#66c2a5", "#fc8d62", "#8da0cb", "#e78ac3", "#a6d854",
@@ -34,7 +35,7 @@ export default function CumulativePnL({ timestamps, series, title }: Props) {
             });
             line.setData(
               timestamps.map((t, j) => ({
-                time: t.slice(0, 10) as `${number}-${number}-${number}`,
+                time: toChartTime(t),
                 value: series[sym][j] ?? 0,
               }))
             );

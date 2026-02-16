@@ -35,14 +35,15 @@ def main():
         logging.exception("Cache refresh failed")
         sys.exit(1)
 
-    # After cache refresh, push to Vercel Blob
+    # After cache refresh, write JSON data files and push to git
     try:
-        from push_to_vercel import push_system
+        from push_to_vercel import push_system, _git_push
         for system in ["oanda", "alpaca", "solana"]:
             push_system(system)
-        logging.info("Vercel push completed successfully")
+        _git_push()
+        logging.info("Data push completed successfully")
     except Exception as e:
-        logging.warning("Vercel push failed (non-fatal): %s", e)
+        logging.warning("Data push failed (non-fatal): %s", e)
 
 
 if __name__ == "__main__":

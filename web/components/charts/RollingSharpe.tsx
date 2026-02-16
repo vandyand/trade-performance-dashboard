@@ -3,6 +3,7 @@
 import type { TimeSeries } from "@/lib/types";
 import { LineSeries } from "lightweight-charts";
 import ChartContainer from "./ChartContainer";
+import { toChartTime } from "@/lib/chartTime";
 
 interface Props {
   data: TimeSeries;
@@ -25,7 +26,7 @@ export default function RollingSharpe({ data, window: windowSize }: Props) {
           });
           series.setData(
             data.timestamps.map((t, i) => ({
-              time: t.slice(0, 10) as `${number}-${number}-${number}`,
+              time: toChartTime(t),
               value: data.values[i],
             }))
           );

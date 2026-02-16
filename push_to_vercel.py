@@ -1,23 +1,24 @@
-"""Push pre-computed dashboard data to Vercel Blob.
+"""Push pre-computed dashboard data to the Next.js public directory.
 
 Reads from Parquet cache, computes all metrics and chart-ready
-data, then uploads JSON to Vercel Blob via REST API.
+data, then writes JSON files to web/public/data/ and pushes
+to git so Vercel auto-deploys with fresh data.
 
 Usage:
     python push_to_vercel.py              # push all systems
     python push_to_vercel.py --system oanda  # push one system
-    python push_to_vercel.py --dry-run    # compute but don't upload
+    python push_to_vercel.py --dry-run    # compute but don't write
 """
 
 import argparse
 import json
 import logging
 import os
+import subprocess
 from pathlib import Path
 
 import numpy as np
 import pandas as pd
-import requests
 
 from data_loader import (
     _read_cached_nav,
@@ -33,8 +34,8 @@ from metrics import (
 
 logger = logging.getLogger(__name__)
 
-BLOB_TOKEN = os.environ.get("BLOB_READ_WRITE_TOKEN", "")
-BLOB_API = "https://blob.vercel-storage.com"
+REPO_ROOT = Path(__file__).resolve().parent
+DATA_DIR = REPO_ROOT / "web" / "public" / "data"
 
 PHASE2_START = pd.Timestamp("2026-01-19", tz="UTC")
 
@@ -258,31 +259,14 @@ def prepare_risk(
     }
 
 
-def _upload_blob(path: str, data: dict) -> str | None:
-    """Upload JSON to Vercel Blob. Returns URL or None on failure."""
-    if not BLOB_TOKEN:
-        logger.warning("BLOB_READ_WRITE_TOKEN not set, skipping upload for %s", path)
-        return None
+def _write_json(path: str, data: dict) -> None:
+    """Write JSON file to web/public/data/."""
+    out_path = DATA_DIR / path
+    out_path.parent.mkdir(parents=True, exist_ok=True)
 
     body = json.dumps(data, cls=NumpyEncoder)
-    resp = requests.put(
-        f"{BLOB_API}/{path}",
-        headers={
-            "Authorization": f"Bearer {BLOB_TOKEN}",
-            "x-api-version": "7",
-            "x-add-random-suffix": "0",
-            "content-type": "application/json",
-        },
-        data=body,
-    )
-
-    if resp.status_code == 200:
-        url = resp.json().get("url")
-        logger.info("Uploaded %s (%d bytes) -> %s", path, len(body), url)
-        return url
-    else:
-        logger.error("Upload failed for %s: %s %s", path, resp.status_code, resp.text)
-        return None
+    out_path.write_text(body)
+    logger.info("Wrote %s (%d bytes)", out_path.relative_to(REPO_ROOT), len(body))
 
 
 def push_system(system: str, dry_run: bool = False) -> None:
@@ -355,29 +339,61 @@ def push_system(system: str, dry_run: bool = False) -> None:
         cfg["rolling_5min"], cfg["exposure_cols"],
     )
 
-    blobs = {
-        f"dashboard/{system}/overview-daily.json": overview_daily,
-        f"dashboard/{system}/overview-5min.json": overview_5min,
-        f"dashboard/{system}/positions.json": positions_data,
-        f"dashboard/{system}/risk-daily.json": risk_daily,
-        f"dashboard/{system}/risk-5min.json": risk_5min,
+    files = {
+        f"{system}/overview-daily.json": overview_daily,
+        f"{system}/overview-5min.json": overview_5min,
+        f"{system}/positions.json": positions_data,
+        f"{system}/risk-daily.json": risk_daily,
+        f"{system}/risk-5min.json": risk_5min,
     }
 
-    for path, data in blobs.items():
+    for path, data in files.items():
         if dry_run:
             size = len(json.dumps(data, cls=NumpyEncoder))
             logger.info("[DRY RUN] %s: %d bytes", path, size)
         else:
-            _upload_blob(path, data)
+            _write_json(path, data)
+
+
+def _git_push() -> None:
+    """Commit and push data files to trigger Vercel auto-deploy."""
+    data_rel = DATA_DIR.relative_to(REPO_ROOT)
+    try:
+        # Check if there are changes to commit
+        result = subprocess.run(
+            ["git", "status", "--porcelain", str(data_rel)],
+            cwd=REPO_ROOT, capture_output=True, text=True,
+        )
+        if not result.stdout.strip():
+            logger.info("No data changes to push")
+            return
+
+        subprocess.run(
+            ["git", "add", str(data_rel)],
+            cwd=REPO_ROOT, check=True, capture_output=True,
+        )
+        subprocess.run(
+            ["git", "commit", "-m", "data: update dashboard JSON"],
+            cwd=REPO_ROOT, check=True, capture_output=True,
+        )
+        subprocess.run(
+            ["git", "push"],
+            cwd=REPO_ROOT, check=True, capture_output=True, timeout=30,
+        )
+        logger.info("Pushed data update to git (triggers Vercel deploy)")
+    except subprocess.TimeoutExpired:
+        logger.warning("Git push timed out")
+    except subprocess.CalledProcessError as e:
+        logger.warning("Git push failed: %s", e.stderr or e)
 
 
 def main():
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
-    parser = argparse.ArgumentParser(description="Push dashboard data to Vercel Blob")
+    parser = argparse.ArgumentParser(description="Push dashboard data")
     parser.add_argument("--system", choices=["oanda", "alpaca", "solana"],
                         help="Push only this system")
     parser.add_argument("--dry-run", action="store_true",
-                        help="Compute data but don't upload")
+                        help="Compute data but don't write")
     args = parser.parse_args()
 
     systems = [args.system] if args.system else ["oanda", "alpaca", "solana"]
@@ -386,6 +402,9 @@ def main():
             push_system(system, dry_run=args.dry_run)
         except Exception:
             logger.exception("Failed to push %s", system)
+
+    if not args.dry_run:
+        _git_push()
 
 
 if __name__ == "__main__":

@@ -2,6 +2,7 @@
 
 import { AreaSeries } from "lightweight-charts";
 import ChartContainer from "./ChartContainer";
+import { toChartTime } from "@/lib/chartTime";
 
 const EXPOSURE_COLORS: Record<string, { line: string; top: string }> = {
   "Long Exposure":    { line: "#00C853", top: "rgba(0, 200, 83, 0.3)" },
@@ -36,7 +37,7 @@ export default function ExposureChart({ timestamps, series }: Props) {
             });
             area.setData(
               timestamps.map((t, i) => ({
-                time: t.slice(0, 10) as `${number}-${number}-${number}`,
+                time: toChartTime(t),
                 value: series[label][i] ?? 0,
               }))
             );

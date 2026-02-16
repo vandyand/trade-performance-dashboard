@@ -3,20 +3,26 @@
 import useSWR from "swr";
 import type { OverviewData, PositionsData, RiskData, SystemSlug, Timeframe } from "./types";
 
-const BLOB_BASE = process.env.NEXT_PUBLIC_BLOB_BASE_URL || "";
-
-const fetcher = (url: string) => fetch(url).then((r) => r.json());
+const fetcher = async (url: string) => {
+  const res = await fetch(url);
+  if (!res.ok) {
+    throw new Error(`Failed to fetch data (${res.status})`);
+  }
+  return res.json();
+};
 
 const SWR_OPTIONS = {
   revalidateOnFocus: false,
   refreshInterval: 60_000,
   dedupingInterval: 30_000,
+  errorRetryCount: 3,
+  errorRetryInterval: 5_000,
 };
 
 export function useOverview(system: SystemSlug, timeframe: Timeframe) {
   const freq = timeframe === "daily" ? "daily" : "5min";
   return useSWR<OverviewData>(
-    `${BLOB_BASE}/dashboard/${system}/overview-${freq}.json`,
+    `/data/${system}/overview-${freq}.json`,
     fetcher,
     SWR_OPTIONS,
   );
@@ -24,7 +30,7 @@ export function useOverview(system: SystemSlug, timeframe: Timeframe) {
 
 export function usePositions(system: SystemSlug) {
   return useSWR<PositionsData>(
-    `${BLOB_BASE}/dashboard/${system}/positions.json`,
+    `/data/${system}/positions.json`,
     fetcher,
     SWR_OPTIONS,
   );
@@ -33,7 +39,7 @@ export function usePositions(system: SystemSlug) {
 export function useRisk(system: SystemSlug, timeframe: Timeframe) {
   const freq = timeframe === "daily" ? "daily" : "5min";
   return useSWR<RiskData>(
-    `${BLOB_BASE}/dashboard/${system}/risk-${freq}.json`,
+    `/data/${system}/risk-${freq}.json`,
     fetcher,
     SWR_OPTIONS,
   );

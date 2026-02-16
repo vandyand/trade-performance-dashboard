@@ -54,7 +54,7 @@ export default function PositionsPage() {
     }
   }
 
-  const plField = "unrealized_pl";
+  const plField = system === "solana" ? "unrealized_pnl" : "unrealized_pl";
   const symbolField = system === "oanda" ? "instrument" : "symbol";
 
   const sortedPositions = [...data.positions].sort(
