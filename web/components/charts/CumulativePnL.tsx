@@ -1,7 +1,7 @@
 "use client";
 
 import { LineSeries } from "lightweight-charts";
-import ChartContainer from "./ChartContainer";
+import MultiSeriesChartContainer from "./MultiSeriesChartContainer";
 import { toChartTime } from "@/lib/chartTime";
 
 const PALETTE = [
@@ -24,14 +24,20 @@ export default function CumulativePnL({ timestamps, series, title }: Props) {
   return (
     <div>
       <h3 className="text-sm font-medium text-white/70 mb-2">{title}</h3>
-      <ChartContainer
+      <MultiSeriesChartContainer
         options={{ height: 450 } as any}
+        valueFormat="dollar"
+        seriesMeta={symbols.map((sym, i) => ({
+          label: sym,
+          color: PALETTE[i % PALETTE.length],
+        }))}
         onChart={(chart) => {
-          symbols.forEach((sym, i) => {
+          const seriesApis = symbols.map((sym, i) => {
             const line = chart.addSeries(LineSeries, {
               color: PALETTE[i % PALETTE.length],
               lineWidth: 2,
-              title: sym,
+              lastValueVisible: false,
+              priceLineVisible: false,
             });
             line.setData(
               timestamps.map((t, j) => ({
@@ -39,8 +45,10 @@ export default function CumulativePnL({ timestamps, series, title }: Props) {
                 value: series[sym][j] ?? 0,
               }))
             );
+            return line;
           });
           chart.timeScale().fitContent();
+          return seriesApis;
         }}
       />
     </div>

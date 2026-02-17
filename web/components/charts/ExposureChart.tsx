@@ -1,7 +1,7 @@
 "use client";
 
 import { AreaSeries } from "lightweight-charts";
-import ChartContainer from "./ChartContainer";
+import MultiSeriesChartContainer from "./MultiSeriesChartContainer";
 import { toChartTime } from "@/lib/chartTime";
 
 const EXPOSURE_COLORS: Record<string, { line: string; top: string }> = {
@@ -24,16 +24,22 @@ export default function ExposureChart({ timestamps, series }: Props) {
   return (
     <div>
       <h3 className="text-sm font-medium text-white/70 mb-2">Exposure Over Time</h3>
-      <ChartContainer
+      <MultiSeriesChartContainer
+        valueFormat="dollar"
+        seriesMeta={labels.map((label) => ({
+          label,
+          color: (EXPOSURE_COLORS[label] ?? { line: "#4A90D9" }).line,
+        }))}
         onChart={(chart) => {
-          labels.forEach((label) => {
+          const seriesApis = labels.map((label) => {
             const colors = EXPOSURE_COLORS[label] ?? { line: "#4A90D9", top: "rgba(74,144,217,0.3)" };
             const area = chart.addSeries(AreaSeries, {
               lineColor: colors.line,
               topColor: colors.top,
               bottomColor: "transparent",
               lineWidth: 1,
-              title: label,
+              lastValueVisible: false,
+              priceLineVisible: false,
             });
             area.setData(
               timestamps.map((t, i) => ({
@@ -41,8 +47,10 @@ export default function ExposureChart({ timestamps, series }: Props) {
                 value: series[label][i] ?? 0,
               }))
             );
+            return area;
           });
           chart.timeScale().fitContent();
+          return seriesApis;
         }}
       />
     </div>

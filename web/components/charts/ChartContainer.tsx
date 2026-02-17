@@ -20,6 +20,7 @@ const CHART_DEFAULTS: DeepPartial<ChartOptions> = {
   timeScale: {
     borderColor: "rgba(255,255,255,0.1)",
     timeVisible: true,
+    minBarSpacing: 0.1,
   },
   rightPriceScale: {
     borderColor: "rgba(255,255,255,0.1)",
