@@ -1,0 +1,8 @@
+{
+  "git": {
+    "deploymentEnabled": {
+      "master": true
+    }
+  },
+  "ignoreCommand": "git diff --quiet HEAD^ HEAD -- . ':!web/public/data'"
+}

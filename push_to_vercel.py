@@ -259,12 +259,25 @@ def prepare_risk(
     }
 
 
+def _sanitize(obj):
+    """Replace inf/nan with 0.0 in nested structures (plain Python floats)."""
+    if isinstance(obj, float):
+        if obj != obj or obj == float("inf") or obj == float("-inf"):
+            return 0.0
+        return obj
+    if isinstance(obj, dict):
+        return {k: _sanitize(v) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [_sanitize(v) for v in obj]
+    return obj
+
+
 def _write_json(path: str, data: dict) -> None:
     """Write JSON file to web/public/data/."""
+    body = json.dumps(_sanitize(data), cls=NumpyEncoder, allow_nan=False)
+
     out_path = DATA_DIR / path
     out_path.parent.mkdir(parents=True, exist_ok=True)
-
-    body = json.dumps(data, cls=NumpyEncoder)
     out_path.write_text(body)
     logger.info("Wrote %s (%d bytes)", out_path.relative_to(REPO_ROOT), len(body))
 
