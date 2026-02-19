@@ -33,6 +33,11 @@ SYSTEMS = {
             "/home/kingjames/rl-trader/altmemecoins/logs/solana_account_positions.jsonl"
         ),
     },
+    "kalshi": {
+        "jsonl_path": Path(
+            "/home/kingjames/kalshi-edge/logs/kalshi_nav_snapshots.jsonl"
+        ),
+    },
 }
 
 # ---------------------------------------------------------------------------
@@ -264,6 +269,64 @@ def _extract_solana_data(
     return nav_rows, instrument_snapshots, latest_positions
 
 
+def _extract_kalshi_data(
+    records: list[dict],
+) -> tuple[list[dict], list[tuple], list[dict]]:
+    """Extract nav rows, instrument snapshots, and latest positions from Kalshi records."""
+    nav_rows: list[dict] = []
+    instrument_snapshots: list[tuple] = []
+    latest_positions: list[dict] = []
+
+    for rec in records:
+        try:
+            if rec.get("event") != "kalshi_nav_snapshot":
+                continue
+
+            portfolio = rec["portfolio"]
+            agents = rec.get("agents", [])
+            ts = pd.to_datetime(rec["time_iso"])
+
+            total_cash = sum(a.get("cash_cents", 0) for a in agents) / 100.0
+            total_mtm = sum(a.get("mtm_value_cents", 0) for a in agents) / 100.0
+
+            nav_rows.append({
+                "timestamp": ts,
+                "nav": portfolio["total_nav_cents"] / 100.0,
+                "cash": total_cash,
+                "positions_value": total_mtm,
+                "positions_count": int(portfolio.get("total_positions", 0)),
+                "settlements_count": int(portfolio.get("total_settlements", 0)),
+            })
+
+            agent_pnl: dict[str, float] = {}
+            pos_rows: list[dict] = []
+            for agent in agents:
+                name = agent["name"]
+                pnl = agent.get("pnl_cents", 0) / 100.0
+                agent_pnl[name] = pnl
+
+                pos_rows.append({
+                    "symbol": name,
+                    "nav_usd": agent.get("nav_cents", 0) / 100.0,
+                    "cash_usd": agent.get("cash_cents", 0) / 100.0,
+                    "positions_count": int(agent.get("positions_count", 0)),
+                    "cost_basis_usd": agent.get("cost_basis_cents", 0) / 100.0,
+                    "mtm_value_usd": agent.get("mtm_value_cents", 0) / 100.0,
+                    "unrealized_pnl": pnl,
+                    "pnl_pct": float(agent.get("pnl_pct", 0)),
+                    "settlements": int(agent.get("settlements", 0)),
+                })
+
+            if agent_pnl:
+                instrument_snapshots.append((ts, agent_pnl))
+            latest_positions = pos_rows
+
+        except (KeyError, json.JSONDecodeError, ValueError):
+            continue
+
+    return nav_rows, instrument_snapshots, latest_positions
+
+
 # ---------------------------------------------------------------------------
 # DataFrame builders
 # ---------------------------------------------------------------------------
@@ -309,6 +372,7 @@ _EXTRACTORS = {
     "oanda": _extract_oanda_data,
     "alpaca": _extract_alpaca_data,
     "solana": _extract_solana_data,
+    "kalshi": _extract_kalshi_data,
 }
 
 

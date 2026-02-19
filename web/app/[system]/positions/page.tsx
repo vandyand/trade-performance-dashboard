@@ -42,6 +42,16 @@ export default function PositionsPage() {
       { label: "Long", value: String(data.summary.long) },
       { label: "Short", value: String(data.summary.short) },
     );
+  } else if (system === "kalshi") {
+    summaryCards.push(
+      { label: "Active Agents", value: String(data.summary.total) },
+    );
+    if (data.summary.positions_value != null) {
+      summaryCards.push({ label: "Positions Value", value: fmtDollar(data.summary.positions_value) });
+    }
+    if (data.summary.total_unrealized_pnl != null) {
+      summaryCards.push({ label: "Unrealized P&L", value: fmtSignedDollar(data.summary.total_unrealized_pnl) });
+    }
   } else {
     summaryCards.push(
       { label: "Open Positions", value: String(data.summary.total) },
@@ -54,7 +64,7 @@ export default function PositionsPage() {
     }
   }
 
-  const plField = system === "solana" ? "unrealized_pnl" : "unrealized_pl";
+  const plField = (system === "solana" || system === "kalshi") ? "unrealized_pnl" : "unrealized_pl";
   const symbolField = system === "oanda" ? "instrument" : "symbol";
 
   const sortedPositions = [...data.positions].sort(

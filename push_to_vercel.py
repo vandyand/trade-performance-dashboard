@@ -80,6 +80,19 @@ SYSTEM_CONFIG = {
         },
         "start_nav_from_data": True,
     },
+    "kalshi": {
+        "value_col": "nav",
+        "annual_daily": 365,
+        "annual_5min": 365 * 288,
+        "rolling_daily": 10,
+        "rolling_5min": 288,
+        "filter_start": None,
+        "exposure_cols": {
+            "Contract Positions": "positions_value",
+            "Cash": "cash",
+        },
+        "start_nav_from_data": True,
+    },
 }
 
 
@@ -331,6 +344,11 @@ def push_system(system: str, dry_run: bool = False) -> None:
             positions_value = float(positions_df["value_usd"].sum())
         if "unrealized_pnl" in positions_df.columns:
             total_unrealized_pnl = float(positions_df["unrealized_pnl"].sum())
+    elif system == "kalshi" and not positions_df.empty:
+        if "mtm_value_usd" in positions_df.columns:
+            positions_value = float(positions_df["mtm_value_usd"].sum())
+        if "unrealized_pnl" in positions_df.columns:
+            total_unrealized_pnl = float(positions_df["unrealized_pnl"].sum())
 
     overview_daily = prepare_overview(daily_df, value_col, cfg["annual_daily"], system_info)
     overview_5min = prepare_overview(raw_df, value_col, cfg["annual_5min"], system_info)
@@ -403,13 +421,13 @@ def _git_push() -> None:
 def main():
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
     parser = argparse.ArgumentParser(description="Push dashboard data")
-    parser.add_argument("--system", choices=["oanda", "alpaca", "solana"],
+    parser.add_argument("--system", choices=["oanda", "alpaca", "solana", "kalshi"],
                         help="Push only this system")
     parser.add_argument("--dry-run", action="store_true",
                         help="Compute data but don't write")
     args = parser.parse_args()
 
-    systems = [args.system] if args.system else ["oanda", "alpaca", "solana"]
+    systems = [args.system] if args.system else ["oanda", "alpaca", "solana", "kalshi"]
     for system in systems:
         try:
             push_system(system, dry_run=args.dry_run)

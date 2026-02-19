@@ -75,5 +75,5 @@ export interface RiskData {
   };
 }
 
-export type SystemSlug = "oanda" | "alpaca" | "solana";
+export type SystemSlug = "oanda" | "alpaca" | "solana" | "kalshi";
 export type Timeframe = "daily" | "5min";

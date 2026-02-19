@@ -49,6 +49,19 @@ export const SYSTEMS: Record<SystemSlug, SystemConfig> = {
     ],
     startCaption: null,
   },
+  kalshi: {
+    slug: "kalshi",
+    name: "Kalshi Predictions",
+    label: "Kalshi",
+    valueName: "NAV",
+    description: [
+      "25 specialized trading agents",
+      "Binary prediction contracts",
+      "Paper trading",
+      "5-minute sampling intervals",
+    ],
+    startCaption: "Algorithm began trading Feb 19, 2026 with $3,750.00 across 25 agents",
+  },
 };
 
-export const SYSTEM_SLUGS: SystemSlug[] = ["oanda", "alpaca", "solana"];
+export const SYSTEM_SLUGS: SystemSlug[] = ["oanda", "alpaca", "solana", "kalshi"];
