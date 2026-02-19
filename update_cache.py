@@ -38,7 +38,7 @@ def main():
     # After cache refresh, write JSON data files and push to git
     try:
         from push_to_vercel import push_system, _git_push
-        for system in ["oanda", "alpaca", "solana"]:
+        for system in ["oanda", "alpaca", "solana", "kalshi"]:
             push_system(system)
         _git_push()
         logging.info("Data push completed successfully")
