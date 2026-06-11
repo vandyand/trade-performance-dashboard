@@ -21,7 +21,7 @@ export const SYSTEMS: Record<SystemSlug, SystemConfig> = {
       "Daily position sizing",
       "Daily decision intervals",
     ],
-    startCaption: "Algorithm began trading Jan 19, 2026",
+    startCaption: "Traded live Jan 19 – Mar 10, 2026",
   },
   alpaca: {
     slug: "alpaca",
@@ -34,7 +34,7 @@ export const SYSTEMS: Record<SystemSlug, SystemConfig> = {
       "Paper trading",
       "Daily rebalancing",
     ],
-    startCaption: "Algorithm began trading Feb 2, 2026 with account balance of $100,000.00",
+    startCaption: "Traded live Feb 2 – Mar 11, 2026, starting balance $100,000.00",
   },
   solana: {
     slug: "solana",
@@ -55,12 +55,12 @@ export const SYSTEMS: Record<SystemSlug, SystemConfig> = {
     label: "Kalshi",
     valueName: "NAV",
     description: [
-      "25 specialized trading agents",
+      "Deterministic rules engine",
       "Binary prediction contracts",
-      "Paper trading",
+      "Backtested against historical inefficiencies",
       "5-minute sampling intervals",
     ],
-    startCaption: "Algorithm began trading Feb 19, 2026 with $3,750.00 across 25 agents",
+    startCaption: "Traded live Feb 23 – Mar 11, 2026, starting with $5,000.00",
   },
 };
 

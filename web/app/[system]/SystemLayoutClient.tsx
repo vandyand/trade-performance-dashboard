@@ -33,7 +33,7 @@ export default function SystemLayoutClient({ system, children }: Props) {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold">Algorithmic Trading Performance</h1>
-          <p className="text-sm text-white/50">Live system metrics | Updated every 5 minutes</p>
+          <p className="text-sm text-white/50">Live trading track record | Jan&ndash;Mar 2026</p>
         </div>
         <TimeframeToggle value={timeframe} onChange={setTimeframe} />
       </div>
